@@ -23,11 +23,11 @@ for i = 1, number_of_repetitions do
   --message sent MUST HAVE end-of-line character at the end, because that's signaling the end of the message to the server
   local n_bytes = client:send("r\n")
   
-  --reads entire string sent, checking for errors
+  --reads entire string received, checking for errors
   local str, err_msg = client:receive()
   if not str then print(err_msg) end
   
-  --closes connection after reply from server ?
+  --closes connection after reply from server
   client:close()  
   
 end

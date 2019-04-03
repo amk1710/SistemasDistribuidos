@@ -34,16 +34,23 @@ print("Please connect to localhost on port " .. port)
 while 1 do
   -- wait for a connection from any client
   local client = server:accept()
-  
-  -- make sure we don't block waiting for this client's line
-  --client:settimeout(10)
-  
+   
+  -- receive as many requests as necessary from the same client
+  --connection is closed when client closes the connection,
+  --or when 10s pass without a request
   -- receive the request
-  local line, err = client:receive()
   
-  --if no error ocurred, ignore the request's content and simply send the 1K randomString
-  if not err then client:send(KString .. "\n") end
+  client:settimeout(10)
+  local line, err
+  repeat 
+    line, err = client:receive()
+    --if no error ocurred, ignore the request's content and simply send the 1K randomString
+    if not err then client:send(KString .. "\n") end
+    
+  until not line or err
   
-  -- done with client, close the object
-  client:close()
+  
+  
+  
+  --client:close()
 end

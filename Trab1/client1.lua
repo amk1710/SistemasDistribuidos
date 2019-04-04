@@ -32,4 +32,4 @@ for i = 1, number_of_repetitions do
   
 end
 now = socket.gettime()
-print(number_of_repetitions.." successive connect-request-get_reply iterations were performed in "..(now - start_time).." seconds")
+print("client1:"..number_of_repetitions.." successive connect-request-get_reply iterations were performed in "..(now - start_time).." seconds")

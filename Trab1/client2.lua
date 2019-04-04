@@ -35,4 +35,4 @@ client:close()
 
 
 now = socket.gettime()
-print(number_of_repetitions.." successive request-get_reply iterations were performed in "..(now - start_time).." seconds")
+print("client2:"..number_of_repetitions.." successive request-get_reply iterations were performed in "..(now - start_time).." seconds")

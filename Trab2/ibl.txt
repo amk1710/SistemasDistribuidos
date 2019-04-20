@@ -22,6 +22,26 @@ struct { name = "minhaStruct2",
 	
 }
 
+interface 	{ name = "minhaInt",
+				methods = {
+					foo = 	{
+								resulttype = "double",
+								args = {{direction = "in",
+								type = "double"},
+								{direction = "in",type = "string"},
+								{direction = "inout",type = "int"}
+							}
+					},
+					bar = {
+						resulttype = "void"
+						args = {
+							
+						}
+					}
+				}
+			}
+				
+
 struct { name = "minhaStruct3",
 	
 	fields = {{name = "nome",

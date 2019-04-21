@@ -13,6 +13,7 @@ o1 = {
 
 }
 
-ip, p = luarpc.registerServant(idl, o1)
+--arg[1] e arg[2] opcionalmente indicam qual ip e porta o servant deve usar
+ip, p = luarpc.registerServant(idl, o1, arg[1], arg[2])
 print("estou esperando reqs para xxx na porta " .. p)
 luarpc.waitIncoming()

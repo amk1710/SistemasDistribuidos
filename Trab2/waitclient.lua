@@ -16,7 +16,7 @@ rep_num = arg[2] or 1
 
 rep1 = luarpc.createProxy(idl, "localhost", port)
 for i = 1, rep_num do
-  --local wait = io.read()
+  local wait = io.read()
   success, ret = rep1.foo(10, "serser",20)
   if success then
 	  print(ret)

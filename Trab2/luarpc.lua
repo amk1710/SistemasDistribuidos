@@ -5,10 +5,6 @@ local socket = require ("socket")
 
 local luarpc = {}
 
---vars globais
-local ip = "localhost"
-local servants = {}
-
 --próximos passos:
   -- implementar idl, chamada e retorno de funções genéricas
   -- implementar várias portas ativas
@@ -107,9 +103,24 @@ end
 
 --funções exportadas pela biblioteca: registerServant, waitIncoming, serialize, deserialize
 
+--vars globais
+
+local ip = "localhost" --mudar depois para pegar da linha de comando:
+
+
+local sockets = {} -- array com os sockets de todos os servants aberto
+local servants = {} -- table (indexada por socket) com informações do servant: ip, port, função listen, open_conections
+
+local max_connections = 3 --num maximo de conexões abertas permitidas ao mesmo servant/socket
 
 --função que dada a idl e um servente, o registra e disponibiliza através da porta
-function luarpc.registerServant(idl, object)
+function luarpc.registerServant(idl, object, p_ip, p_port)
+  
+  --se ip e porta desejados não foram especificados, escolhe qualquer porta no localhost
+  p_ip = p_ip or "localhost"
+  p_port = p_port or 0 -- 0 indica qualquer porta
+  
+  print(p_ip, p_port)
 
   interface, structs = parser(idl)
   tprint(interface)
@@ -121,24 +132,20 @@ function luarpc.registerServant(idl, object)
   --abre um socket pra esse servant, salva ele numa lista local
 
   -- create a TCP socket and bind it to the (local) host, at any port
-  local server = assert(socket.bind("*", 0))
+  
+  local server = assert(socket.bind(p_ip, p_port))
   -- find out which port the OS chose for us
   local ip, port = server:getsockname()
-  server:settimeout(1)
-
-  listen = function()
-
-    --checa por conexão de cliente, com timeout de um segundo
-    local client, timeout = server:accept()
-
-    --se cliente conectou,
-    if client then
-
-      --tenta receber requisição:
+  
+  server:settimeout(0)
+  
+  local connected_clients = {}
+  
+  local receive_and_reply = function (client)
+    --tenta receber requisição:
       local req, err = client:receive()  
 
       --tendo recebido a requisição, atende-a e envia de volta a resposta
-      --(por enquanto, uma resposta qualquer)
       if not err then
         --deserializa
         values = binser.deserialize(mime.unb64(req))
@@ -161,22 +168,59 @@ function luarpc.registerServant(idl, object)
         reply = serialize(ret_values)
         
         --envia reply
-        client:send(reply .. "\n")        
-      
+        client:send(reply .. "\n")
         
       end
+  end
 
-
+  local listen = function()
+    
+    --checa se há novos clientes tentando conectar(o que pode ser a causa do select ter disparado essa função listen)
+    local client, timeout = server:accept()
+    
+    --se novo cliente conectou,
+    if client then
+      client:settimeout(1)
+      if #connected_clients >= max_connections then
+        --remove a conexão mais antiga
+        print("clientes demais nesse socket!")
+        table.remove(connected_clients, 1)
+      end
+      table.insert(connected_clients, client)
     end
-
-
-
-
+    
+    --checa clientes que já estão conectados
+    for i = #connected_clients, 1, -1 do --percorre ao contrário pra poder fazer a remoção da tabela sem problemas
+      local client = connected_clients[i]
+      --receive de 0 bytes serve para apontar se: 
+      --a. este cliente está tentando mandar mensagem; 
+      --b. este cliente fechou a conexão (ou teve a conexão fechada?)
+      --c. não é este cliente que está tentando mandar mensagem (timeout)
+      
+      local msg, err = client:receive(0)
+      print(msg == "", err, i)
+      if msg then
+        --caso a
+        print("cliente antigo veio de novo")
+        receive_and_reply(client)
+      elseif err == "closed" then
+        --caso b
+        print("cliente antigo fechou a conexão")
+        table.remove(connected_clients, i) --remove cliente da lista de clientes abertos
+      elseif err == "timeout" then
+        --caso c
+        print("cliente antigo não fechou ainda")
+        --não preciso fazer nada com este cliente agora
+      end
+    
+    end
+    
   end
 
   servant = {ip = ip, port = port, listen = listen}
+  servants[server] = servant
 
-  table.insert(servants, servant)
+  table.insert(sockets, server)
 
   return ip, port
 
@@ -185,9 +229,19 @@ end
 --após se registrar, um servente deve aguardar ser acionado
 function luarpc.waitIncoming()
   while(true) do
-    for _, servant in pairs(servants) do
-      servant.listen()
+    for _, socket in ipairs(sockets) do
+      servants[socket].listen()
     end
+    
+    --[[
+    --detecta servants que tiveram alguma alteração no status
+    local canread = socket.select(sockets, nil, 1) --timeout de 0.1 obriga select a checar várias vezes, impedindo wait de travar no caso do mesmo cliente fazendo varias reqs seguidas
+    for _, socket in ipairs(canread) do
+      servants[socket].listen() --manda o servant tratar o cliente(vai realizar o accept, receive etc.)
+    end
+    --]]
+  
+  
   end
 
 end
@@ -254,12 +308,11 @@ function luarpc.createProxy(idl, ip, port)
       --chamada do procedimento remoto:
       
       --empacota valores para a request
-      req = serialize(req_values)
-      
+      req = serialize(req_values)      
       
       --to do: proteger proxy contra o servidor ter fechado a conexão
       --envia request
-      client:send(req.."\n")
+      bytes_sent = client:send(req.."\n")
       
       --recebe resposta do server
       local str, err_msg = client:receive()

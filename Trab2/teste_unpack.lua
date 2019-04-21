@@ -12,7 +12,10 @@ local function func(...)
 	print(unpack(values, 1,5))
 end
 
+local function func2(a)
+	a = 10
+end
 
-func("nome", "asdasd", "sfsdf", nil, "qwqwe")
-
-print(type(nil))
+b = 5
+_, val = func2(b)
+print(b)

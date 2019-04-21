@@ -75,7 +75,7 @@ local function interface_parser(interface_string)
 
 end
 
---funções auxiliares, não exportadas
+
 --função parser recebe uma string idl(que deve estar no formato especificado no enunciado),
 --e retorna uma table com as informações dos métodos da idl
 local function parser(idl_string)
@@ -95,6 +95,15 @@ local function parser(idl_string)
   return interface
 end
 
+--função para serialização de uma table request/reply
+local function serialize(values)
+  return mime.b64(binser.serialize(table.unpack(values)))
+end
+
+--deserialização
+local function deserialize(str)
+  return binser.deserialize(mime.unb64(str))
+end
 
 --funções exportadas pela biblioteca: registerServant, waitIncoming, serialize, deserialize
 
@@ -102,9 +111,13 @@ end
 --função que dada a idl e um servente, o registra e disponibiliza através da porta
 function luarpc.registerServant(idl, object)
 
-  --por enquanto, não faz nada com a idl
-
-
+  interface, structs = parser(idl)
+  tprint(interface)
+  
+  
+  --verifica se a implementação fornecida pelo objeto está de acordo com a especificação fornecida na idl
+  --como? (pra que?)   
+  
   --abre um socket pra esse servant, salva ele numa lista local
 
   -- create a TCP socket and bind it to the (local) host, at any port
@@ -122,12 +135,35 @@ function luarpc.registerServant(idl, object)
     if client then
 
       --tenta receber requisição:
-      local line, err = client:receive()
+      local req, err = client:receive()  
 
       --tendo recebido a requisição, atende-a e envia de volta a resposta
       --(por enquanto, uma resposta qualquer)
       if not err then
-        client:send("answer" .. "\n")
+        --deserializa
+        values = binser.deserialize(mime.unb64(req))
+        func_name = table.remove(values, 1) --values[1] é o nome da função, pelo protocolo
+        --tenta chamar função com parametros dados
+        if object[func_name] and type(object[func_name]) == "function" then
+          ret = object[func_name](table.unpack(values))
+          
+          ret_values = {true, ret} --true indica que rpc deu certo
+          -- (to-do: botar params inout)
+          
+          
+        else
+          --função não é implementada pelo objeto, retorna erro
+          ret_values = {false, "function" .. func_name .."was not implemented by the provided object"}
+          
+        end
+        
+        -- codifica retorno
+        reply = serialize(ret_values)
+        
+        --envia reply
+        client:send(reply .. "\n")        
+      
+        
       end
 
 
@@ -162,6 +198,11 @@ function luarpc.createProxy(idl, ip, port)
   --table de funções a serem retornadas
   local functions = {}
   local interface, structs = parser(idl)
+  
+  --abre conexão para este proxy
+  local client = socket.connect(ip, port)
+  if not client then return nil, "connection error" end
+  
 
   for _, method in ipairs(interface.methods) do
     functions[method.name] = function(...) -- ... é uma jogada bem esperta tirada dos slides
@@ -169,21 +210,38 @@ function luarpc.createProxy(idl, ip, port)
       local params = {...}
       local req_values = {method.name} -- um array com os valores a serem passados adiante ao servidor, por meio da requisição
 
-      if(table.maxn(params) ~= #method.args) then
+      if(#params ~= #method.args) then
         return nil, "Error: too many or too few arguments(consult idl)"
       end
 
-      --for dessa maneira é necessário para se proteger de nils na tabela
-      for i = 1, table.maxn(params) do
+      --for dessa maneira é necessário para se proteger de nils na tabela(funciona?)
+      --ps: está aceitando nils que vem "sobrando" como parametros em excesso
+      for i = 1, #params do
           param = params[i]
         --checa se parametro passado é compatível com o definido pelo cabeçalho
-
         -- a principio não aceita nil como parametro nunca (a menos que se defina um parametro do tipo nil na idl, mas pra que?)
-
-        --não sei ainda como tratar com os numbers... antes da 5.3 lua só tinha o tipo number, mas nas defs tem tipo double ou int?
-        --por enquanto, faz um caso especial meio nojento
         local arg_type = method.args[i].type
-        if (type(param) == arg_type or (type(param) == "number" and (arg_type == "number" or arg_type == "double" or arg_type == "int"))) then
+        if type(param) == "number" then
+          --trata caso especial de número
+          
+          if arg_type == "number" or arg_type == "double" then 
+            --se for tipo double, aceita direto, pq o lua vai se tratar certo sendo inteiro ou ponto flutuante, não importa
+            --estou também aceitando na idl a especificação como number genérico
+            table.insert(req_values, param)
+          elseif arg_type == "int" then
+            --se a idl restringir a um inteiro, aceita só se conversão para int funcionou
+            param_as_int = math.tointeger(param)
+            if param_as_int then
+              table.insert(req_values, param)
+            else
+              --senão, aponta erro
+              return nil, "Error: value cannot be converted to integer"
+            end
+          else
+            return nil, "Error: idl defines invalid type:" .. arg_type
+          end
+        --to do: tratar structs
+        elseif type(param) == arg_type then
           --aceita o argumento passado, o adicionando ao array
           table.insert(req_values, param)
         else
@@ -194,36 +252,33 @@ function luarpc.createProxy(idl, ip, port)
       end
 
       --chamada do procedimento remoto:
-
-
-
+      
+      --empacota valores para a request
+      req = serialize(req_values)
+      
+      
+      --to do: proteger proxy contra o servidor ter fechado a conexão
+      --envia request
+      client:send(req.."\n")
+      
+      --recebe resposta do server
+      local str, err_msg = client:receive()
+      if not str then
+        return false, err_msg
+      else
+        --desempacota reply
+        ret_values = deserialize(str)
+        
+        return table.unpack(ret_values) --já inclui true, indicando sucesso
+      end
+      
     end
   end
 
   return functions
-
-  --[[
-  --client novo para o proxy
-  local client = socket.connect(ip, port)
-  if not client then return nil, "connection error" end
-
-
-  return {foo = function(proxy, ...)
-
-    --faz a request
-    client:send("request \n")
-
-    --aguarda resposta do server
-    local str, err_msg = client:receive()
-    if not str then
-      return nil, err_msg
-    else
-      return str
-    end
-
-  end}
-
-  --]]
+  
 end
 
+
+--return da biblioteca
 return luarpc

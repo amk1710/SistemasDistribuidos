@@ -2,9 +2,13 @@ local binser = require ("binser")
 local mime = require("mime")
 local luarpc = require("luarpc")
 
+--idl file specifies interface
+local input_file = io.open("idl.txt", "r")
+idl = input_file:read("*a")
+
 o1 = {
-		foo = function(a,b)
-			return a+b, "alo, alo"
+		foo = function(d, s, i)
+			return d+i
 		end
 
 }

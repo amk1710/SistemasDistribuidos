@@ -47,8 +47,8 @@ local function interface_parser(interface_string)
 		method.name = string.match(method_string, "(%w*)%s*=%s*%b{}")
 		if (not method.name or method.name == "") then error("Unnamed method isn't permitted. Aborting") end
 
-		method.resultype = string.match(method_string, "resulttype%s*=%s*\"(%w+)\"")
-		if not (method.resultype or method.resultype == "") then error("Method with no resulttype specification isn't permitted. Aborting") end
+		method.result_type = string.match(method_string, "resulttype%s*=%s*\"(%w+)\"")
+		if not (method.result_type or method.result_type == "") then error("Method with no resulttype specification isn't permitted. Aborting") end
 
 		method.args = {}
 
@@ -91,14 +91,16 @@ local function parser(idl_string)
   return interface
 end
 
+
+--ps: preferi serializar os valores dentro de uma lista. Dessa maneira, é possível indicar um retorno vazio pela lista vazia, o que não era possivel antes (pq dando table.unpack({}), obtemos *nada*, o que quebrava a de/serialização) 
 --função para serialização de uma table request/reply
 local function serialize(values)
-  return mime.b64(binser.serialize(table.unpack(values)))
+  return (mime.b64(binser.serialize((values))))
 end
 
 --deserialização
 local function deserialize(str)
-  return binser.deserialize(mime.unb64(str))
+  return (binser.deserialize((mime.unb64(str))))[1] -- retorno de binser.deserialize é uma lista, o [1] é só pra tirar essa camada extra
 end
 
 --funções exportadas pela biblioteca: registerServant, waitIncoming, serialize, deserialize
@@ -148,9 +150,12 @@ function luarpc.registerServant(idl, object, p_ip, p_port)
       --tendo recebido a requisição, atende-a e envia de volta a resposta
       if not err then
         --deserializa
-        values = binser.deserialize(mime.unb64(req))
+        values = deserialize(req)
+        print("values:")
+        tprint(values)
         func_name = table.remove(values, 1) --values[1] é o nome da função, pelo protocolo
         --tenta chamar função com parametros dados
+        print(func_name)
         if object[func_name] and type(object[func_name]) == "function" then
           ret_values = table.pack(object[func_name](table.unpack(values)))
           
@@ -248,7 +253,6 @@ function luarpc.waitIncoming()
 
 end
 
-
 --cria um proxy que requerirá as chamadas remotas
 --comunicação entre o proxy e o requerente obedece ao formato da pcall, 
 --comunicação entre o proxy e o server usa checks de timeout e erro, e dispensa o parametro true/false
@@ -328,7 +332,39 @@ function luarpc.createProxy(idl, ip, port)
       else
         --desempacota reply
         ret_values = deserialize(str)
-        return true, table.unpack(ret_values) --inclui true, indicando sucesso
+        -- validar retorno com idl. Só estará falso se implementador fornecido não implementar corretamente a função
+        
+        --monta uma tabela com os tipos esperados, considerando retorno e inout
+        expected_types = {}
+        if method.result_type ~= "void" then 
+          table.insert(expected_types, method.result_type)
+        end
+        for i, arg in ipairs(method.args) do
+          if arg.direction == "inout" then
+            table.insert(expected_types, arg.type)
+          end
+        end
+        
+        print("qtds:" ,#expected_types, ret_values.n)
+        if #expected_types ~= ret_values.n then --ret_values.n é construído pela table.pack no retorno da função rpc. Acaba sendo bem útil aqui para não ter problemas com nils
+          --só acontece se implementador desobedece protocolo.
+          client:close()          
+          return false, "Implementer object returned too many/few parameters"
+        end
+        
+        for i , val in ipairs(expected_types) do
+          --to do: tratar structs
+          if ret_values[i] ~= val then
+            client:close()
+            return false, "Implementer object returned invalid types"
+          end
+        end        
+        
+        --se nada até agora deu errado, é pq deu certo
+        print("ret_values:")
+        tprint(ret_values)
+        return true, table.unpack(ret_values, 1, ret_values.n) --inclui true, indicando sucesso
+        --se a função rpc for void, o retorno normal é omitido e se passa diretamente para os inout
       end
       
     end

@@ -35,7 +35,7 @@ interface 	{ name = "minhaInt",
 					bar = {
 						resulttype = "void"
 						args = {
-							
+							{direction = "inout",type = "int"}
 						}
 					}
 				}

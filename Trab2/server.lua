@@ -9,6 +9,13 @@ idl = input_file:read("*a")
 o1 = {
 		foo = function(d, s, i)
 			return d+i
+		end,
+		
+		--se uma função tem retorno void e parametros inout, ela deve retornar nil e depois os parametros inout
+		--de maneira geral, deve retornar nil primeiro, sempre que for void. 
+		--Mas se ela por acaso for nil sem params inout, não faz diferença dar um return vazio ou mesmo não retornar. Porém, não recomendado por não ser claro
+		bar = function()
+		  return nil
 		end
 
 }

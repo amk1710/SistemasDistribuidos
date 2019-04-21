@@ -152,15 +152,17 @@ function luarpc.registerServant(idl, object, p_ip, p_port)
         func_name = table.remove(values, 1) --values[1] é o nome da função, pelo protocolo
         --tenta chamar função com parametros dados
         if object[func_name] and type(object[func_name]) == "function" then
-          ret = object[func_name](table.unpack(values))
+          ret_values = table.pack(object[func_name](table.unpack(values)))
           
-          ret_values = {true, ret} --true indica que rpc deu certo
           -- (to-do: botar params inout)
-          
-          
         else
-          --função não é implementada pelo objeto, retorna erro
-          ret_values = {false, "function" .. func_name .."was not implemented by the provided object"}
+          --função não é implementada pelo objeto.
+          -- isso só acontece se o objeto fornecido como implementador não obedece à idl, o que não é verificado pelo luarpc
+          -- dada essa situação, decidi por fechar o server.
+          
+          client:close()
+          server:close() --fecha socket todo
+          error("Server closed because provide implementer didn't implement funcion provided in the idl")
           
         end
         
@@ -248,6 +250,8 @@ end
 
 
 --cria um proxy que requerirá as chamadas remotas
+--comunicação entre o proxy e o requerente obedece ao formato da pcall, 
+--comunicação entre o proxy e o server usa checks de timeout e erro, e dispensa o parametro true/false
 function luarpc.createProxy(idl, ip, port)
   --table de funções a serem retornadas
   local functions = {}
@@ -313,6 +317,9 @@ function luarpc.createProxy(idl, ip, port)
       --to do: proteger proxy contra o servidor ter fechado a conexão
       --envia request
       bytes_sent = client:send(req.."\n")
+      if bytes_sent ~= string.len(req.."\n") then
+        return false, "Error: proxy couldn't send message to server."
+      end
       
       --recebe resposta do server
       local str, err_msg = client:receive()
@@ -321,8 +328,7 @@ function luarpc.createProxy(idl, ip, port)
       else
         --desempacota reply
         ret_values = deserialize(str)
-        
-        return table.unpack(ret_values) --já inclui true, indicando sucesso
+        return true, table.unpack(ret_values) --inclui true, indicando sucesso
       end
       
     end

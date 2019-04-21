@@ -17,12 +17,12 @@ rep_num = arg[2] or 1
 rep1 = luarpc.createProxy(idl, "localhost", port)
 for i = 1, rep_num do
   --local wait = io.read()
-  --success, ret = rep1.foo(10, "serser",20)
-  success, ret1, ret2 = rep1.bar(10)
+  success, ret, ret2 = rep1.foo(10, "asdf", 10)
+  --success, ret = rep1.bar(10)
   if success then
-	  print(ret1, ret2)
+	  print(ret, ret2)
   else
-	  print("error", ret1)
+	  print("error", ret)
   end
 
 end

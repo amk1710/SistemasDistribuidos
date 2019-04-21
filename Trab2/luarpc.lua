@@ -253,6 +253,39 @@ function luarpc.waitIncoming()
 
 end
 
+--checa se tipo fornecido está OK com especificação da idl
+local function types_match(val, spec)
+  --to do: tratar structs
+  
+  if type(val) == "number" then
+    --trata caso especial de número
+    
+    if spec == "number" or spec == "double" then 
+      --se for tipo double, aceita direto, pq o lua vai se tratar certo sendo inteiro ou ponto flutuante, não importa
+      --estou também aceitando na idl a especificação como 'number', genérico
+      return true
+    elseif spec == "int" then
+      --se a idl restringir a um inteiro, aceita só se conversão para int funcionou
+      val_as_int = math.tointeger(val)
+      if val_as_int then
+        return true
+      else
+        --senão, aponta erro
+        return false, "Error: value cannot be converted to integer"
+      end
+    else
+      return false, "Error: wrong parameter type: " .. type(val) .. " x " .. spec
+    end
+  --to do: tratar structs
+  elseif type(val) == spec then
+    return true
+  else
+    --aponta erro ao chamador
+    return false, "Error: passed parameters are not compatible with the function's signature provided in the idl"
+  end
+  
+end
+
 --cria um proxy que requerirá as chamadas remotas
 --comunicação entre o proxy e o requerente obedece ao formato da pcall, 
 --comunicação entre o proxy e o server usa checks de timeout e erro, e dispensa o parametro true/false
@@ -279,48 +312,24 @@ function luarpc.createProxy(idl, ip, port)
       --for dessa maneira é necessário para se proteger de nils na tabela(funciona?)
       --ps: está aceitando nils que vem "sobrando" como parametros em excesso
       for i = 1, #params do
-          param = params[i]
-        --checa se parametro passado é compatível com o definido pelo cabeçalho
-        -- a principio não aceita nil como parametro nunca (a menos que se defina um parametro do tipo nil na idl, mas pra que?)
-        local arg_type = method.args[i].type
-        if type(param) == "number" then
-          --trata caso especial de número
-          
-          if arg_type == "number" or arg_type == "double" then 
-            --se for tipo double, aceita direto, pq o lua vai se tratar certo sendo inteiro ou ponto flutuante, não importa
-            --estou também aceitando na idl a especificação como number genérico
-            table.insert(req_values, param)
-          elseif arg_type == "int" then
-            --se a idl restringir a um inteiro, aceita só se conversão para int funcionou
-            param_as_int = math.tointeger(param)
-            if param_as_int then
-              table.insert(req_values, param)
-            else
-              --senão, aponta erro
-              return nil, "Error: value cannot be converted to integer"
-            end
-          else
-            return nil, "Error: idl defines invalid type:" .. arg_type
-          end
-        --to do: tratar structs
-        elseif type(param) == arg_type then
-          --aceita o argumento passado, o adicionando ao array
+        local ok, err = types_match(params[i], method.args[i].type)
+        
+        if ok then
           table.insert(req_values, param)
         else
-          --aponta erro ao chamador
-          return nil, "Error: passed parameters are not compatible with the function's signature provided in the idl"
+          return false, err
         end
-
       end
+        
 
       --chamada do procedimento remoto:
       
       --empacota valores para a request
-      req = serialize(req_values)      
+      local req = serialize(req_values)      
       
       --to do: proteger proxy contra o servidor ter fechado a conexão
       --envia request
-      bytes_sent = client:send(req.."\n")
+      local bytes_sent = client:send(req.."\n")
       if bytes_sent ~= string.len(req.."\n") then
         return false, "Error: proxy couldn't send message to server."
       end
@@ -331,14 +340,20 @@ function luarpc.createProxy(idl, ip, port)
         return false, err_msg
       else
         --desempacota reply
-        ret_values = deserialize(str)
+        local ret_values = deserialize(str)
+        
+        tprint(ret_values)
         -- validar retorno com idl. Só estará falso se implementador fornecido não implementar corretamente a função
         
-        --monta uma tabela com os tipos esperados, considerando retorno e inout
-        expected_types = {}
-        if method.result_type ~= "void" then 
-          table.insert(expected_types, method.result_type)
+        --checa tipo do primeiro retorno
+        if type(ret_values[1]) == "nil" and method.result_type ~= "void" then
+          return false, "Implementer object returned invalid types(1)"
+        elseif not types_match(ret_values[1], method.result_type) then
+          return false, "Implementer object returned invalid types(2)"
         end
+        
+        --monta uma tabela com os tipos esperados, considerando só inout
+        local expected_types = {}        
         for i, arg in ipairs(method.args) do
           if arg.direction == "inout" then
             table.insert(expected_types, arg.type)
@@ -346,17 +361,20 @@ function luarpc.createProxy(idl, ip, port)
         end
         
         print("qtds:" ,#expected_types, ret_values.n)
-        if #expected_types ~= ret_values.n then --ret_values.n é construído pela table.pack no retorno da função rpc. Acaba sendo bem útil aqui para não ter problemas com nils
+        --ret_values.n é construído pela table.pack no retorno da função rpc. Acaba sendo bem útil aqui para não ter problemas com nils
+        -- +1 pq expected types não tem o tipo do primeiro retorno, mas o .n tem
+        if #expected_types + 1 ~= ret_values.n then 
           --só acontece se implementador desobedece protocolo.
           client:close()          
           return false, "Implementer object returned too many/few parameters"
-        end
+        end        
         
-        for i , val in ipairs(expected_types) do
-          --to do: tratar structs
-          if ret_values[i] ~= val then
+        for i, val in ipairs(expected_types) do
+          local ok, err = types_match(ret_values[i+1], val) -- i+1 pq no ter_values o 1 é o retorno "normal"(sem ser param inout)
+                    
+          if not ok then
             client:close()
-            return false, "Implementer object returned invalid types"
+            return false, "Implementer object returned invalid types(3)"
           end
         end        
         

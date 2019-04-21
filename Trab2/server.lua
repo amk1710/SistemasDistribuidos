@@ -8,7 +8,7 @@ idl = input_file:read("*a")
 
 o1 = {
 		foo = function(d, s, i)
-			return d+i
+			return 10.5, 1
 		end,
 		
 		--se uma função tem retorno void e parametros inout, ela deve retornar nil e depois os parametros inout

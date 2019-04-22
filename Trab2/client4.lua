@@ -4,7 +4,7 @@ local luarpc = require("luarpc")
 exemplo de client 4:
 O cliente abre um proxy, seta a string global com um numero aleatorio, e imprime [n] vezes seguidas a string global que está no servidor. 
 
-A ideia é que seja usada para demonstrar que é possível abrir mais de um servidor, em portas diferentes, usando o a biblioteca implementada. Se for aberto dois pares server-client4, cada cliente deve imprimir sua propria string.
+A ideia é que seja usada para demonstrar que é possível abrir mais de um servidor, em portas diferentes, usando o a biblioteca implementada. Se forem abertos dois pares server-client4, cada cliente deve imprimir sua propria string.
 Por outro lado, se você conectar um segundo client4 no mesmo servidor, será possível averiguar no primeiro client4 que a string global original foi sobrescrita.
 
 Esse é o único exemplo para o qual eu não forneci o output obtido, já que, além de ser aleatório, o ponto de interesse só é reproduzível com dois terminais.

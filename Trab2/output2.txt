@@ -1,0 +1,18 @@
+nome: minhaStruct, peso: 70.5, idade: 30
+11.8	6	string!!!
+nil	10
+example string
+false	./luarpc.lua:360: Error: too many or too few arguments(consult idl)
+false	./luarpc.lua:360: Error: too many or too few arguments(consult idl)
+false	./luarpc.lua:371: Error: passed parameters are not compatible with the function's signature provided in the idl
+true
+false	./luarpc.lua:371: Error: value cannot be converted to integer
+nome: minhaStruct, peso: 70.5, idade: 30
+11.8	6	string!!!
+nil	10
+example string
+false	./luarpc.lua:360: Error: too many or too few arguments(consult idl)
+false	./luarpc.lua:360: Error: too many or too few arguments(consult idl)
+false	./luarpc.lua:371: Error: passed parameters are not compatible with the function's signature provided in the idl
+true
+false	./luarpc.lua:371: Error: value cannot be converted to integer

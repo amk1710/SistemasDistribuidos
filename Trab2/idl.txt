@@ -16,12 +16,12 @@ interface 	{ name = "minhaInt",
 								resulttype = "double",
 								args = {{direction = "in",
 								type = "double"},
-								{direction = "in",type = "string"},
-								{direction = "in", type = "minhaStruct"},
 								{direction = "inout",type = "int"}
+								{direction = "inout",type = "string"},
+								{direction = "in", type = "minhaStruct"},
 							}
 					},
-					bar = {
+					echoInt = {
 						resulttype = "void"
 						args = {
 							{direction = "inout",type = "int"}
@@ -39,10 +39,33 @@ interface 	{ name = "minhaInt",
 					  
 					}
 					
-					printstruct = {
-					  resulttype = "void",
+					structToString = {
+					  resulttype = "string",
 					  args = {
 					    {direction = "in", type = "minhaStruct"}
+					  }
+					
+					},
+					
+					inc = {
+					  resulttype = "int",
+					  args = {
+					    {direction = "in", type = "int"}
+					  }
+					},
+					
+					setGlobalString = {
+					  resulttype = "void",
+					  args = {
+					    {direction = "in", type = "string"}
+					  }
+					
+					},
+					
+					getGlobalString = {
+					  resulttype = "string",
+					  args = {
+					    
 					  }
 					
 					}

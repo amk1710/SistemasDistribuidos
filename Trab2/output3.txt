@@ -1,0 +1,7 @@
+proxy 1 :global string!!!
+proxy 2 :global string!!!
+proxy 3 :global string!!!
+proxy 4 :global string!!!
+false	./luarpc.lua:391: closed
+proxy 2 :global string!!!
+proxy 3 :global string!!!

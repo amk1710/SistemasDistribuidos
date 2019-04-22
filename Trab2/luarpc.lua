@@ -224,7 +224,7 @@ function luarpc.registerServant(idl, object, p_ip, p_port)
   -- find out which port the OS chose for us
   local ip, port = server:getsockname()
   
-  server:settimeout(0)
+  server:settimeout(0.1)
   
   local connected_clients = {}
   
@@ -236,16 +236,12 @@ function luarpc.registerServant(idl, object, p_ip, p_port)
       if not err then
         --deserializa
         values = deserialize(req)
-        tprint(values)
-        print("------")
+        
         func_name = table.remove(values, 1) --values[1] é o nome da função, pelo protocolo
-        tprint(values)
-        print("------")
+        
         --tenta chamar função com parametros dados
         if object[func_name] and type(object[func_name]) == "function" then
-          print(values, type(values))
-          tprint(values)
-          print("------")
+          
           ret_values = table.pack(object[func_name](table.unpack(values)))
           
           -- (to-do: botar params inout)
@@ -276,7 +272,7 @@ function luarpc.registerServant(idl, object, p_ip, p_port)
     
     --se novo cliente conectou,
     if client then
-      client:settimeout(1)
+      client:settimeout(0.1)
       if #connected_clients >= max_connections then
         --remove a conexão mais antiga
         connected_clients[1]:close()
@@ -296,15 +292,12 @@ function luarpc.registerServant(idl, object, p_ip, p_port)
       local msg, err = client:receive(0)
       if msg then
         --caso a
-        --print("cliente antigo veio de novo")
         receive_and_reply(client)
       elseif err == "closed" then
         --caso b
-        --print("cliente antigo fechou a conexão")
         table.remove(connected_clients, i) --remove cliente da lista de clientes abertos
       elseif err == "timeout" then
         --caso c
-        --print("cliente antigo não fechou ainda")
         --não preciso fazer nada com este cliente agora
       end
     
@@ -352,7 +345,9 @@ function luarpc.createProxy(idl, ip, port)
   
   --abre conexão para este proxy
   local client = socket.connect(ip, port)
-  if not client then return nil, "connection error" end
+  client:settimeout(1)
+  if not client then error("connection error") end
+
   
 
   for _, method in ipairs(interface.methods) do
@@ -362,19 +357,18 @@ function luarpc.createProxy(idl, ip, port)
       local req_values = {method.name} -- um array com os valores a serem passados adiante ao servidor, por meio da requisição
 
       if(#params ~= #method.args) then
-        return nil, "Error: too many or too few arguments(consult idl)"
+        error("Error: too many or too few arguments(consult idl)")
       end
 
       --for dessa maneira é necessário para se proteger de nils na tabela(funciona?)
       --ps: está aceitando nils que vem "sobrando" como parametros em excesso
-      print(#params)
       for i = 1, #params do
         local ok, err = types_match(params[i], method.args[i].type)
         
         if ok then
           table.insert(req_values, params[i])
         else
-          return false, err
+          error(err)
         end
       end
         
@@ -387,14 +381,14 @@ function luarpc.createProxy(idl, ip, port)
       --to do: proteger proxy contra o servidor ter fechado a conexão
       --envia request
       local bytes_sent = client:send(req.."\n")
-      if bytes_sent ~= string.len(req.."\n") then
-        return false, "Error: proxy couldn't send message to server."
+      if not bytes_sent or bytes_sent ~= string.len(req.."\n") then
+        error("Error: proxy couldn't send message to server.")
       end
       
       --recebe resposta do server
       local str, err_msg = client:receive()
-      if not str then
-        return false, err_msg
+      if err_msg then
+        error(err_msg)
       else
         --desempacota reply
         local ret_values = deserialize(str)
@@ -404,15 +398,7 @@ function luarpc.createProxy(idl, ip, port)
         --checa tipo do primeiro retorno
         
         local ok, err = types_match(ret_values[1], method.result_type)
-        if not ok then return false, "Implementer object returned invalid types(2)" end
-        
-        --[[
-        if type(ret_values[1]) == "nil" and method.result_type ~= "void" then
-          return false, "Implementer object returned invalid types(1)"
-        elseif not types_match(ret_values[1], method.result_type) then
-          return false, "Implementer object returned invalid types(2)"
-        end
-        --]]
+        if not ok then error("Implementer object returned invalid types(2)") end
         
         --monta uma tabela com os tipos esperados, considerando só inout
         local expected_types = {}        
@@ -427,7 +413,7 @@ function luarpc.createProxy(idl, ip, port)
         if #expected_types + 1 ~= ret_values.n then 
           --só acontece se implementador desobedece protocolo.
           client:close()          
-          return false, "Implementer object returned too many/few parameters"
+          error("Implementer object returned too many/few parameters")
         end        
         
         for i, val in ipairs(expected_types) do
@@ -435,15 +421,13 @@ function luarpc.createProxy(idl, ip, port)
                     
           if not ok then
             client:close()
-            return false, "Implementer object returned invalid types(3)"
+            error("Implementer object returned invalid types(3)")
           end
         end        
         
         --se nada até agora deu errado, é pq deu certo
-        print("ret_values:")
-        tprint(ret_values)
-        return true, table.unpack(ret_values, 1, ret_values.n) --inclui true, indicando sucesso
-        --se a função rpc for void, o retorno normal é omitido e se passa diretamente para os inout
+        return table.unpack(ret_values, 1, ret_values.n)
+        
       end
       
     end

@@ -1,42 +1,38 @@
+local luarpc = require("luarpc")
 
---this client repeats (number_of_repetitions) times:
-  --opens connection in the specified port
-  --sends a request
-  --receives answer from server
---it measures the time taken to perform these operations, and prints it on the console
+--[[
+exemplo de client 1:
+O cliente abre um proxy, e chama n vezes seguidas a função 'inc' do servidor. Por último, imprime o retorno obtido da última função, demonstrando o valor incrementado
+Testa a capacidade do servidor de atender diversas vezes seguidas à mesma conexão, sem o processo de fechar e abrir de novo. 
+Se N não for passado, o default é 1
 
-if(arg[2] == nil or arg[1] == nil) then
-  print("usage: port_to_connect, number_of_repetitions")
+usage: com o servidor aberto no ip 'ip' e na porta 'port' fazer:
+  lua client1.lua ip port [n]  
+
+--]]
+
+--idl file specifies interface
+local input_file = io.open("idl.txt", "r")
+idl = input_file:read("*a")
+
+if(arg[1] == nil or arg[2] == nil) then
+  print("usage: ip, port_to_connect, num_repetitions")
+  return
 end
 
-local socket = require("socket")
+ip = arg[1]
+port = arg[2]
+rep_num = arg[3] or 1
 
-local port = arg[1]
-local number_of_repetitions = arg[2]
+rep1 = luarpc.createProxy(idl, ip, port)
 
-local start_time = socket.gettime()
-for i = 1, number_of_repetitions do
-  local client = socket.connect("localhost", port)
-  if not client then error("connection error") end
-
-  --sends request to server, checking if number of bytes sent differ from 0
-  --message sent MUST HAVE end-of-line character at the end, because that's signaling the end of the message to the server
-  --local n_bytes = client:send("r\n")
-
-  --reads entire string received, checking for errors
-  local str, err_msg = client:receive()
-  if not str then print(err_msg) end
-
-  --closes connection after reply from server
-  --client:close()
-
+num = 0
+for i = 1, rep_num do
+  num = rep1.inc(num)
 end
-now = socket.gettime()
 
---se arg3 == "csv", printa num formato csv friendly
-if arg[3] == "csv" then
-  print(number_of_repetitions..","..(now - start_time))
-else
-  print("client1:"..number_of_repetitions.." successive connect-request-get_reply iterations were performed in "..(now - start_time).." seconds")
-end
+print("Incremented num up to: " .. num)
+
+
+
 

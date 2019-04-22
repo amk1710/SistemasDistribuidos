@@ -10,18 +10,6 @@ struct { name = "minhaStruct",
 	
 }
 
-struct { name = "minhaStruct2",
-	
-	fields = {{name = "fasdfasdfasdf",
-	 type = "string"},
-	{name = "peso",
-	 type = "double"}
-	{name = "idade",
-	 type = "int"},
-	 }
-	
-}
-
 interface 	{ name = "minhaInt",
 				methods = {
 					foo = 	{
@@ -29,6 +17,7 @@ interface 	{ name = "minhaInt",
 								args = {{direction = "in",
 								type = "double"},
 								{direction = "in",type = "string"},
+								{direction = "in", type = "minhaStruct"},
 								{direction = "inout",type = "int"}
 							}
 					},
@@ -38,16 +27,27 @@ interface 	{ name = "minhaInt",
 							{direction = "inout",type = "int"}
 						}
 					}
+					
+					newstruct = {
+					  resulttype = "minhaStruct",
+					  args = {
+					      {direction = "in", type = "string"},
+								{direction = "in",type = "double"},
+								{direction = "in", type = "int"}
+							}
+					  
+					  
+					}
+					
+					printstruct = {
+					  resulttype = "void",
+					  args = {
+					    {direction = "in", type = "minhaStruct"}
+					  }
+					
+					}
+					
 				}
 			}
 				
 
-struct { name = "minhaStruct3",
-	
-	fields = {{name = "nome",
-	 type = "string"},
-	{name = "peso",
-	 type = "double"}
-	 }
-	
-}

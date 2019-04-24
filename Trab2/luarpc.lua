@@ -182,12 +182,17 @@ end
 --ps: preferi serializar os valores dentro de uma lista. Dessa maneira, é possível indicar um retorno vazio pela lista vazia, o que não era possivel antes (pq dando table.unpack({}), obtemos *nada*, o que quebrava a de/serialização) 
 --função para serialização de uma table request/reply
 local function serialize(values)
-  return (mime.b64(binser.serialize((values))))
+  local b = binser.serialize(table.unpack(values))
+  local ret = mime.b64(b)
+  return ret
 end
 
 --deserialização
 local function deserialize(str)
-  return (binser.deserialize((mime.unb64(str))))[1] -- retorno de binser.deserialize é uma lista, o [1] é só pra tirar essa camada extra
+  m = mime.unb64(str)
+  ret = binser.deserialize(m)
+  return ret 
+  -- retorno de binser.deserialize é uma lista, o [1] é só pra tirar essa camada extra
 end
 
 --funções exportadas pela biblioteca: registerServant, waitIncoming, serialize, deserialize
@@ -241,10 +246,8 @@ function luarpc.registerServant(idl, object, p_ip, p_port)
         
         --tenta chamar função com parametros dados
         if object[func_name] and type(object[func_name]) == "function" then
-          
           ret_values = table.pack(object[func_name](table.unpack(values)))
           
-          -- (to-do: botar params inout)
         else
           --função não é implementada pelo objeto.
           -- isso só acontece se o objeto fornecido como implementador não obedece à idl, o que não é verificado pelo luarpc
@@ -255,6 +258,9 @@ function luarpc.registerServant(idl, object, p_ip, p_port)
           error("Server closed because provide implementer didn't implement funcion provided in the idl")
           
         end
+        
+        --adiciona true indicando sucesso
+        table.insert(ret_values, 1, true)
         
         -- codifica retorno
         reply = serialize(ret_values)
@@ -345,8 +351,8 @@ function luarpc.createProxy(idl, ip, port)
   
   --abre conexão para este proxy
   local client = socket.connect(ip, port)
-  client:settimeout(1)
   if not client then error("connection error") end
+  client:settimeout(1)
 
   
 
@@ -393,15 +399,28 @@ function luarpc.createProxy(idl, ip, port)
         --desempacota reply
         local ret_values = deserialize(str)
         
+        if ret_values[1] == false then
+          error(ret_values[2])
+        else
+          table.remove(ret_values, 1)
+        end
+        
         -- validar retorno com idl. Só estará falso se implementador fornecido não implementar corretamente a função
         
-        --checa tipo do primeiro retorno
         
+        --monta uma tabela com os tipos esperados, considerando primeiro retorno e inout
+        local expected_types = {}
+        
+        --adiciona primeiro retorno, se ele for diferente de void
+        if method.result_type ~= "void" then
+          table.insert(expected_types, method.result_type)
+        end
+        
+        --[[
         local ok, err = types_match(ret_values[1], method.result_type)
         if not ok then error("Implementer object returned invalid types(2)") end
-        
-        --monta uma tabela com os tipos esperados, considerando só inout
-        local expected_types = {}        
+        --]]
+           
         for i, arg in ipairs(method.args) do
           if arg.direction == "inout" then
             table.insert(expected_types, arg.type)
@@ -410,14 +429,14 @@ function luarpc.createProxy(idl, ip, port)
         
         --ret_values.n é construído pela table.pack no retorno da função rpc. Acaba sendo bem útil aqui para não ter problemas com nils
         -- +1 pq expected types não tem o tipo do primeiro retorno, mas o .n tem
-        if #expected_types + 1 ~= ret_values.n then 
+        if #expected_types ~= #ret_values then 
           --só acontece se implementador desobedece protocolo.
           client:close()          
           error("Implementer object returned too many/few parameters")
         end        
         
         for i, val in ipairs(expected_types) do
-          local ok, err = types_match(ret_values[i+1], val) -- i+1 pq no ter_values o 1 é o retorno "normal"(sem ser param inout)
+          local ok, err = types_match(ret_values[i], val)
                     
           if not ok then
             client:close()
@@ -426,7 +445,7 @@ function luarpc.createProxy(idl, ip, port)
         end        
         
         --se nada até agora deu errado, é pq deu certo
-        return table.unpack(ret_values, 1, ret_values.n)
+        return table.unpack(ret_values, 1, #ret_values)
         
       end
       

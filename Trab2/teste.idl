@@ -1,0 +1,29 @@
+interface {
+    name = "minhaInt",
+    methods = {
+
+        foo = {
+            resulttype = "string",
+            args = {
+                {direction = "inout", type = "double"},
+                {direction = "inout", type = "double"},
+            }
+        },
+
+        boo = {
+            resulttype = "void",
+            args = {
+                {direction = "inout", type= "double"}
+            }
+        },
+
+        bar = {
+            resulttype = "string",
+            args = {
+                {direction = "in", type = "double"},
+                {direction = "in", type = "double"},
+            }
+        },
+    }
+}
+

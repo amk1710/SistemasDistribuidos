@@ -11,11 +11,9 @@ o1 = {
 			return d+struct.peso, i+struct.idade, s .. "!!!"
 		end,
 		
-		--se uma função tem retorno void e parametros inout, ela deve retornar nil e depois os parametros inout
-		--de maneira geral, deve retornar nil primeiro, sempre que for void. 
-		--Mas se ela por acaso for nil sem params inout, não faz diferença dar um return vazio ou mesmo não retornar. Porém, não recomendado por não ser claro
+		--se uma função tem retorno void e parametros inout, ela deve retornar diretamente os parametros inout
 		echoInt = function(i)
-		  return nil, i
+		  return i
 		end,
 		
 		newstruct = function(str, d, i)
@@ -33,7 +31,7 @@ o1 = {
 		
 		setGlobalString = function(str)
 		  global_string = str
-		  return nil
+		  return
 		end,
 		
 		getGlobalString = function()

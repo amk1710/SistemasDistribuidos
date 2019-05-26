@@ -9,8 +9,8 @@ local mime = require ("mime")
 
 local width, height = 800, 600
 
-local pingTime = 2 -- o intervalo de tempo em que uma instância tenta dar ping
-local disconnectTime = 5 -- o intervalo de tempo que configura desconexão por inatividade
+local pingTime = 10 -- o intervalo de tempo em que uma instância tenta dar ping
+local disconnectTime = 20 -- o intervalo de tempo que configura desconexão por inatividade
 local instanceID --o id do meu jogo local
 
 --dicionário de players conectados
@@ -18,6 +18,8 @@ local instanceID --o id do meu jogo local
 local players = {}
 local textbox = 0
 local puck = 0
+
+local base_puck_timeout = 2 --o timeout para o mesmo player interagir com a puck de novo. Meio difícil de regular, acaba dependendo da internet
 
 
 --helper serialize and deserialize functions
@@ -47,6 +49,8 @@ function mqttcb(topic, message)
      players_pingCB(message)  
    elseif topic == "textbox" then
      textboxCB(message)
+   elseif topic == "puck_info" then
+     puck_infoCB(message)
    end
 end
 
@@ -89,13 +93,19 @@ function love.keypressed(key)
     --aproveita e dá ping no player?
     
     --envia texto da textbox
-    
-    mqtt_client:publish("textbox", serialize(instanceID, textbox:getTextForSending()))
+    local shouldSend, text = textbox:getTextForSending()
+    if shouldSend then
+      mqtt_client:publish("textbox", serialize(instanceID, text))
+    end
   end
 end
 
 function love.textinput(t)
     textbox:textInput(t)
+end
+
+function puck_infoCB(message)
+  puck.desiredX, puck.desiredY = deserialize(message)
 end
 
 function love.load()
@@ -108,13 +118,16 @@ function love.load()
   
   --cria puck
   puck = pkMod.createPuck()
+  puck_timeout = 0
   
   --mqtt_client = mqtt.client.create("test.mosquitto.org", 1883, mqttcb)
   mqtt_client = mqtt.client.create("iot.eclipse.org", 1883, mqttcb)
   mqtt_client:connect("cliente love " .. instanceID) --esse identificador provavelmente seria trocado por um identificador único de usuário em uma implementação séria
   
-  mqtt_client:subscribe({"players_ping"}) --optei por ter duas filas nesse caso mesmo, pq de forma geral são informações desrelacionadas. A textbox só depende de que o player esteja ativo, nada mais
+  mqtt_client:subscribe({"players_ping"}) --optei por ter tres filas nesse caso mesmo, pq de forma geral são informações desrelacionadas. A textbox só depende de que o player esteja ativo, nada mais. A puck até colide com o player, o que pode ficar meio defasado, mas considerei como um erro aceitável
   mqtt_client:subscribe({"textbox"})
+  mqtt_client:subscribe({"puck_info"})
+  
   
   
   --sempre há no mínimo um player, eu mesmo. O seu ID é o ID dessa sessão do jogo
@@ -146,13 +159,14 @@ function love.update(dt)
   
   now = love.timer.getTime()
   
-  local to_disconect = {} --lista de players a serem desconectados. Estou usando isso por medo de alterar uma lista enquanto a estou percorrendo com ipairs
+  -- 
   for k, player in pairs(players) do
     if k ~= instanceID and player.lastPing + disconnectTime < now then
       --"desconecta" player inativo
-      players[k] = nil
-    end
-    player:update(dt)
+      players[k] = nil --this is fine
+    else
+        player:update(dt)
+    end    
   end
   
   --se este player não deu ping nos últimos pingTime segundos,
@@ -163,7 +177,23 @@ function love.update(dt)
     
   end
   
+  --checa se player local colide com puc, se sim, publica mensagem com novas coordenadas da puck
+  if players[instanceID] ~= nil and puck_timeout <= 0 then
+    --cálculo da distância entre centro do puck e centro do player
+    local dx, dy = puck.posX - players[instanceID].posX , puck.posY - players[instanceID].posY
+    local dist = math.sqrt(dx*dx, dy*dy)
+    if dist < players[instanceID].radius then
+      --player e puck estão se tocando:
+      print("collide")
+      mqtt_client:publish("puck_info", serialize(puck.randomPosition()))
+      puck_timeout = base_puck_timeout
+    end
+  end
+  
+  puck_timeout = math.max(0, puck_timeout - dt)
   puck:update(dt)
+  
+  
   
 end
   

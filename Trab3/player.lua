@@ -18,8 +18,8 @@ local width, height = 800, 600
 local playerModule = {}
 
 --global for all players
-local radius = 20
-local movement_speed = 100
+local movement_speed = 175
+local pos_tolerance = 5
 
 function playerModule.newPlayer(ID, initialX, initialY)
   initialX = initialX or width/2
@@ -29,6 +29,8 @@ function playerModule.newPlayer(ID, initialX, initialY)
   local player = {}
   player.objType = "player"
   player.ID = ID
+  
+  player.radius = 20
   
   player.posX = initialX
   player.posY = initialY
@@ -52,9 +54,14 @@ function playerModule.newPlayer(ID, initialX, initialY)
        if dirX ~= dirX then dirX = 0 end
        if dirY ~= dirY then dirY = 0 end
 
-      --move
-      player.posX, player.posY = player.posX + (dirX * movement_speed * dt), player.posY + (dirY * movement_speed * dt)
-      
+      --move, só se magnitude do vetor distância for maior do que uma tolerância. Faço isso pra evitar tremelique
+      if mag > pos_tolerance then
+        player.posX, player.posY = player.posX + (dirX * movement_speed * dt), player.posY + (dirY * movement_speed * dt)
+      else
+        --se o movimento desejado for menor do que a tolerância, significa que já estou perto o suficiente da posição desejada, 
+        --e posso só igualar mesmo
+        player.posX, player.posY = player.desiredX, player.desiredY
+      end
       --decrementa tempo de display da fala
       player.shouldDisplay = math.max(0, player.shouldDisplay - dt)
       
@@ -64,7 +71,7 @@ function playerModule.newPlayer(ID, initialX, initialY)
   
   player.update = coroutine.wrap(update_coroutine)
   
-  local displayTime = 4
+  local displayTime = 7
   player.shouldDisplay = -1
   player.message = ""
   player.displayMessage = function(player, str)
@@ -81,10 +88,13 @@ function playerModule.newPlayer(ID, initialX, initialY)
     if isLocalPlayer then
       --se for o player local, desenha um 'halo' em volta, pra mostrar ao jogador
       love.graphics.setColor( 255, 255, 0, 1)
-      love.graphics.circle("fill", player.posX, player.posY, radius + inc)
+      love.graphics.circle("line", player.posX, player.posY, player.radius + inc)
     end
     love.graphics.setColor( 255, 255, 255, 1)
-    love.graphics.circle("fill", player.posX, player.posY, radius)
+    love.graphics.circle("fill", player.posX, player.posY, player.radius)
+    
+    --mostra username
+    love.graphics.printf("user"..player.ID, player.posX + t_offsetX/2, player.posY - t_offsetY/2, max_width)
     
     --mostra texto de fala
     if player.shouldDisplay > 0 then

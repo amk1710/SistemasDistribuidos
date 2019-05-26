@@ -19,7 +19,7 @@ local playerModule = {}
 
 --global for all players
 local movement_speed = 175
-local pos_tolerance = 5
+local pos_tolerance = 20
 
 function playerModule.newPlayer(ID, initialX, initialY)
   initialX = initialX or width/2

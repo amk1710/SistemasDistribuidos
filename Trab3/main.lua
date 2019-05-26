@@ -120,15 +120,15 @@ function love.load()
   puck = pkMod.createPuck()
   puck_timeout = 0
   
+  --o servidor mosquitto não estava conectando em vários momentos quando estava desenvolvendo
   --mqtt_client = mqtt.client.create("test.mosquitto.org", 1883, mqttcb)
   mqtt_client = mqtt.client.create("iot.eclipse.org", 1883, mqttcb)
+  
   mqtt_client:connect("cliente love " .. instanceID) --esse identificador provavelmente seria trocado por um identificador único de usuário em uma implementação séria
   
   mqtt_client:subscribe({"players_ping"}) --optei por ter tres filas nesse caso mesmo, pq de forma geral são informações desrelacionadas. A textbox só depende de que o player esteja ativo, nada mais. A puck até colide com o player, o que pode ficar meio defasado, mas considerei como um erro aceitável
   mqtt_client:subscribe({"textbox"})
   mqtt_client:subscribe({"puck_info"})
-  
-  
   
   --sempre há no mínimo um player, eu mesmo. O seu ID é o ID dessa sessão do jogo
   local player1 = plMod.newPlayer(instanceID, width / 2, height / 2)

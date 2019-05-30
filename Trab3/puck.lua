@@ -56,7 +56,7 @@ puckModule.createPuck = function()
   
   puck.draw = function(puck)
     
-    love.graphics.setColor( 0, 0, 255, 1)
+    love.graphics.setColor( 0, 0, 1)
     love.graphics.circle("fill", puck.posX, puck.posY, puck.radius)
     
   end

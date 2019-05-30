@@ -121,8 +121,8 @@ function love.load()
   puck_timeout = 0
   
   --o servidor mosquitto não estava conectando em vários momentos quando estava desenvolvendo
-  --mqtt_client = mqtt.client.create("test.mosquitto.org", 1883, mqttcb)
-  mqtt_client = mqtt.client.create("iot.eclipse.org", 1883, mqttcb)
+  mqtt_client = mqtt.client.create("test.mosquitto.org", 1883, mqttcb)
+  --mqtt_client = mqtt.client.create("iot.eclipse.org", 1883, mqttcb)
   
   mqtt_client:connect("cliente love " .. instanceID) --esse identificador provavelmente seria trocado por um identificador único de usuário em uma implementação séria
   

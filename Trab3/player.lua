@@ -87,10 +87,10 @@ function playerModule.newPlayer(ID, initialX, initialY)
     
     if isLocalPlayer then
       --se for o player local, desenha um 'halo' em volta, pra mostrar ao jogador
-      love.graphics.setColor( 255, 255, 0, 1)
+      love.graphics.setColor( 1, 1, 0)
       love.graphics.circle("line", player.posX, player.posY, player.radius + inc)
     end
-    love.graphics.setColor( 255, 255, 255, 1)
+    love.graphics.setColor( 1, 1, 1)
     love.graphics.circle("fill", player.posX, player.posY, player.radius)
     
     --mostra username

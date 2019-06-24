@@ -1,0 +1,158 @@
+#include "/home/terra/TerraNG/terra/TerraNet.defs"
+
+var ushort nodeId = getNodeId();
+
+pktype identification from radioMsg with
+	var ushort id;
+end
+
+/*
+var usrMsg sndData;
+var usrMsg recData;
+sndData.type=1;
+sndData.target = BROADCAST;
+sndData.source = nodeId;
+sndData.d32[0] = 0;
+*/
+
+//construct neighbors list:
+//up to 10 direct neighbors
+var ushort[10] neighbors_ids;
+var ushort qtd_neighbors = 0;
+
+var identification send_id;
+send_id.type = 1;
+send_id.target = BROADCAST;
+send_id.source = nodeId;
+send_id.id = nodeId;
+
+var identification receive_id;
+
+//emite mensagem a todos os vizinhos, avisando o seu proprio ID
+//var ushort delay= random()%500; // [0 .. 500]
+//await (delay)ms; 
+//emit SEND(send_id);
+
+//espera por 10 segundo pelo aviso dos vizinhos
+par/or do
+	par/and do
+		loop do
+			receive_id = await RECEIVE;
+			neighbors_ids[qtd_neighbors] = receive_id.id;
+			qtd_neighbors = qtd_neighbors + 1;
+			emit LEDS(TOGGLE);
+		end
+	with
+		var ushort delay= random()%5000; // [0 .. 4999]
+		await (delay)ms; 
+		emit SEND(send_id);
+	end
+	
+with
+	loop do
+		await 10s;
+		break;
+	end
+end
+
+//fim da identificação dos vizinhos
+
+//uso um campo ushort para identificar entre queries ou agente ao receber uma mensagem
+var ushort query = 0;
+var ushort agent = 1;
+
+pktype agent from radioMsg with
+	var ushort msg_type;	
+	var ushort n_jumps;
+	var ushort agent_id;
+	var ushort last_neighbor;
+end
+
+pktype query from radioMsg with
+	var ushort msg_type;
+	var ushort event_type; // não tenho muito certeza dessa...
+	//em uma query, eu estou procurando por tipos de evento, ou por um evento específico, com um ID específico?
+end
+
+//começo do loop de espera por queries ou agentes
+
+//teste: mandar uma msg a um vizinho específico
+var agent ex_msg;
+ex_msg.type = 1;
+ex_msg.target = neighbors_ids[0];
+ex_msg.msg_type = agent;
+
+var ushort times_received = 0;
+
+var agent received;
+
+par/or do
+	par/and do
+		loop do
+			received = await RECEIVE;
+			times_received = times_received + 1;
+		end
+	with
+		loop i, qtd_neighbors do
+			var ushort delay= random()%1000;
+			await (delay)ms;
+			ex_msg.target = neighbors_ids[i];
+			emit SEND(ex_msg);
+		end
+	end
+	
+with
+	loop do
+		await 15s;
+		break;
+	end
+end
+
+if times_received == qtd_neighbors then
+	emit LED0(ON);
+	emit LED1(ON);
+	emit LED2(ON);
+end
+
+/*
+if qtd_neighbors == 3 then
+	emit LED0(ON);
+	emit LED1(OFF);
+	emit LED2(OFF);
+else/if qtd_neighbors == 5 then
+	emit LED0(OFF);
+	emit LED1(ON);
+	emit LED2(OFF);
+else/if qtd_neighbors == 8 then
+	emit LED0(OFF);
+	emit LED1(OFF);
+	emit LED2(ON);
+else
+	emit LED0(ON);
+	emit LED1(ON);
+	emit LED2(ON);
+end
+*/
+
+
+
+/*
+if nodeId == 11 then
+par do
+	loop do
+		emit REQ_TEMP();
+		sndData.d16[0] = await TEMP;
+		emit SEND(sndData);
+		await SEND_DONE;
+		inc sndData.d8[0];
+		await 2s;
+	end
+with
+	loop do
+		recData = await RECEIVE;
+		emit LEDS(recData.d8[0]);
+	end
+end
+emit LED0(ON);
+end
+*/

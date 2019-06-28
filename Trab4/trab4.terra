@@ -60,13 +60,24 @@ end
 //fim da identificação dos vizinhos
 
 //uso um campo ushort para identificar entre queries ou agente ao receber uma mensagem
-var ushort query = 5;
-var ushort agent = 6;
+var byte query = 5;
+var byte agent = 6;
+var byte reply = 7;
 var ushort max_jumps = 4;
 var ushort maxJumpsQuery = 100;
 
+var byte eventMinID = 1;
+var byte eventMaxID = 2;
+var ushort eventMin_neighbor = 0;
+var ushort eventMax_neighbor = 0;
+var ushort eventMin_hops = 1000;
+var ushort eventMax_hops = 1000;
+
+
+
+
 pktype agent from radioMsg with
-	//var ushort msg_type;	
+	var byte event_type;
 	var ushort n_jumps;
 	var ushort agent_id;
 	var ushort last_neighbor;
@@ -75,8 +86,13 @@ end
 pktype query from radioMsg with
 	var ushort n_jumps;
 	var ushort last_neighbor;
-	var ushort event_type; // não tenho muito certeza dessa...
-	//em uma query, eu estou procurando por tipos de evento, ou por um evento específico, com um ID específico?
+	var ushort event_type;
+	var ushort requester; 
+end
+
+pktype reply from radioMsg with
+	var ushort temperature;
+	var ushort requester;
 end
 
 //começo do loop de espera por queries ou agentes
@@ -84,22 +100,41 @@ end
 var agent ag_msg;
 ag_msg.type = agent;
 ag_msg.target = neighbors_ids[0];
-//ag_msg.msg_type = agent;
+ag_msg.event_type = eventMinID;
 ag_msg.n_jumps = 0;
 
 var query ex_query;
 ex_query.n_jumps = 0;
 ex_query.last_neighbor = 44;
-ex_query.event_type = query;
+ex_query.event_type = eventMinID;
 ex_query.type = query;
+
+var reply sReply;
+sReply.type = reply;
+
 
 
 var ushort times_received = 0;
 
+var ushort originalRequester = 0;
+var ushort neighborToReplyTo = 0;
+
+var ushort hopsToEventMin = 1000;
+var byte originatedEventMin = 0;
+var byte originatedEventMax = 0;
+var byte hasEventMin = 0;
+var byte hasEventMax = 0;
+
 if nodeId == 11 then
-	//send agent	
+	//send agent
+	originatedEventMin = 1;
+	hasEventMin = 1;
+	emit LED0(ON);
+	eventMin_hops = 0;
+	eventMin_neighbor = 0;
 	ag_msg.target = 12;
 	ag_msg.n_jumps = 0;
+	ag_msg.last_neighbor = 11;
 	emit SEND(ag_msg);
 end
 
@@ -110,25 +145,42 @@ if nodeId == 44 then
 	emit LED1(ON);
 	emit LED2(ON);
 	ex_query.target = 34;
+	ex_query.event_type = eventMinID;
+	ex_query.requester = 44;
 	emit SEND(ex_query);
 	await SEND_DONE;
-
-
 end
 
 var agent rec_ag;
-var agent rec_query;
+var query rec_query;
+var reply rec_reply;
 
 var byte hasReceivedAgent = 0;
 
+
+
+//LED 0 -> tem evento min
+//LED 1 -> tem evento max
+//LED 2 -> está fazendo query
+
+qClear();
+
 par do
-	loop do
+	loop do //receber um AGENTE:
 		rec_ag = await RECEIVE;
 		if rec_ag.type == agent then
-			hasReceivedAgent = 1;
-			emit LED0(ON);
-			emit LED1(OFF);
-			emit LED2(ON);			
+			if rec_ag.event_type == eventMinID then
+				if rec_ag.n_jumps + 1 < eventMin_hops then
+					eventMin_hops = rec_ag.n_jumps + 1;
+					eventMin_neighbor = rec_ag.last_neighbor;
+				end
+				hasEventMin = 1;		
+				emit LED0(ON);
+			else/if rec_ag.event_type == eventMaxID then
+				emit LED1(ON);
+				//to do: max
+			end
+
 			if rec_ag.n_jumps < max_jumps then
 				//repassa o agente a outro vizinho
 				
@@ -136,7 +188,7 @@ par do
 				var ushort neighbor_index;
 				var ushort temp = 0;		
 				
-				//esse código pra sortear um vizinho tá muito burro... tem que um jeito melhor, mesmo com as restrições da linguagem
+				//sorteia vizinho
 				loop i,1000 do
 					temp = random()%qtd_neighbors;
 					if neighbors_ids[temp] != ag_msg.last_neighbor then neighbor_index = temp; end
@@ -145,86 +197,125 @@ par do
 				rec_ag.target = neighbors_ids[neighbor_index];
 				rec_ag.last_neighbor = nodeId;
 				
-				//qPut(rec_ag);
-				emit SEND(rec_ag);
-				await SEND_DONE;
+				qPut(rec_ag); //fila?
+				//emit SEND(rec_ag);
+				//await SEND_DONE;
 			end
 		end
 	end
 with
-	loop do
+	loop do //receber uma QUERY
 		rec_query = await RECEIVE;
 		if rec_query.type == query then
-			if hasReceivedAgent then
-				//esse nó registrou o caminho para o evento buscado!
-				emit LED0(ON);
-				emit LED1(ON);
-				emit LED2(ON);
+			if rec_query.event_type == eventMinID and hasEventMin == 1 then
+				
+				if eventMin_hops == 0 then
+					//estou no nó que originou o evento
+					//devo mandar reply, por ora só acendo leds
+					emit LED0(ON);
+					emit LED1(ON);
+					emit LED2(ON);
+					//mandar reply
+					emit REQ_TEMP;
+					sReply.temperature = await TEMP;
+					sReply.requester = rec_query.requester;
+					sReply.target = rec_query.last_neighbor;					
+					qPut(sReply);
+					
+				else
+					//esse nó registrou o caminho para o evento buscado!
+
+					//seto o caminho de volta
+					if originalRequester != rec_query.requester then //só posso setar o caminho de volta se a query que eu to recebendo não está loopando em mim, senão eu perdeira o caminho até o requester
+						neighborToReplyTo = rec_query.last_neighbor;
+					end	
+
+					//encaminho pelo caminho que conheço:
+					rec_query.n_jumps = rec_query.n_jumps + 0; //como já conheço o caminho, não incremento mais os pulos, pq não preciso matar a query caso não ache nada
+					rec_query.last_neighbor = nodeId;
+					rec_query.target = eventMin_neighbor;
+					qPut(rec_query); //bota na fila do rádio	
+							
+				end
+				
+
+				
+
 			else/if rec_query.n_jumps < maxJumpsQuery then
 				//encaminho a query pra outro nó aleatório
+
+				//seto caminho de volta				
+				neighborToReplyTo = rec_query.last_neighbor;
+
 				//escolhe vizinho aleatório, mas não pode ser o mesmo que me enviou o agente
 				
 				var ushort neighbor_index;
 				var ushort temp = 0;		
 				
-				//esse código pra sortear um vizinho tá muito burro... tem que um jeito melhor, mesmo com as restrições da linguagem
+				//sorteia vizinho
 				loop i,1000 do
 					temp = random()%qtd_neighbors;
 					if neighbors_ids[temp] != rec_query.last_neighbor then neighbor_index = temp; end
 				end
+
 				rec_query.n_jumps = rec_query.n_jumps + 1;
 				rec_query.last_neighbor = nodeId;
 				rec_query.target = neighbors_ids[neighbor_index];
-				qPut(rec_query);			
+				qPut(rec_query); //bota na fila do rádio	
 				//emit SEND(rec_query);
 				//await SEND_DONE;
-				
 			end
 			
 		end
 
 	end
 
+with
+	loop do //receber e repassar replies
+		rec_reply = await RECEIVE;
+		if rec_reply.type == reply then
+			emit LED0(OFF);
+			emit LED1(ON);
+			emit LED2(OFF);
+
+			if rec_reply.requester == nodeId then //reply chegou ao nó que fez a request
+				emit LED0(ON);
+				emit LED1(OFF);
+				emit LED2(OFF);
+			else
+				//continua encaminhando
+				await 1s;
+				rec_reply.target = 	neighborToReplyTo;
+				qPut(rec_reply);
+			end
+
+			
+			
+
+		end
+
+
+	end
+
+
 //enviar mensagens que estão na fila, até fila acabar
 with
-	//qClear();
+	qClear();
 	loop do
 		if qSize() == 0 then
 			await Q_READY;
 		end
 		//sends message from queue
-		var identification msgVar;
+		var agent msgVar;
 		qGet(msgVar);
-		emit SEND(msgVar);
-		await SEND_DONE;
+		var ubyte ack;
+		loop do
+			emit SEND_ACK(msgVar);
+			ack = await SEND_DONE_ACK;
+			if ack == TRUE then break; end // se mensagem foi enviada com sucesso, ok, saio do loop
+		end
 	end
 
 
 
 end
-
-
-
-
-
-
-/*
-if nodeId == 11 then
-par do
-	loop do
-		emit REQ_TEMP();
-		sndData.d16[0] = await TEMP;
-		emit SEND(sndData);
-		await SEND_DONE;
-		inc sndData.d8[0];
-		await 2s;
-	end
-with
-	loop do
-		recData = await RECEIVE;
-		emit LEDS(recData.d8[0]);
-	end
-end
-emit LED0(ON);
-end
-*/

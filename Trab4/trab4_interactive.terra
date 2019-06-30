@@ -57,40 +57,50 @@ with
 	end
 end
 
+
+emit LED0(OFF);
+emit LED1(OFF);
+emit LED2(OFF);
+
 //fim da identificação dos vizinhos
 
 //uso um campo ushort para identificar entre queries ou agente ao receber uma mensagem
 var byte query = 5;
 var byte agent = 6;
 var byte reply = 7;
-var ushort max_jumps = 4;
+var ushort max_jumps = 2;
 var ushort maxJumpsQuery = 100;
 
-var byte eventMinID = 1;
-var byte eventMaxID = 2;
-var ushort eventMin_neighbor = 0;
-var ushort eventMax_neighbor = 0;
-var ushort eventMin_hops = 1000;
-var ushort eventMax_hops = 1000;
+var byte eventMinID = 0;
+var byte eventMaxID = 1;
+
+var ushort[2] event_neighbor;
+//0 é pro min, 1 pro max
+event_neighbor[0] = 0;
+event_neighbor[1] = 0;
+var ushort[2] event_hops;
+event_hops[0] = 1000;
+event_hops[1] = 1000;
 
 
-
-
+//event type pode ser 0 ou 1, o que me permite acessar os arrays com este valor se precisar
 pktype agent from radioMsg with
-	var byte event_type;
+	var byte event_type;	
 	var ushort n_jumps;
-	var ushort agent_id;
 	var ushort last_neighbor;
+	var ushort agent_id;
+	
 end
 
 pktype query from radioMsg with
+	var ushort event_type;	
 	var ushort n_jumps;
 	var ushort last_neighbor;
-	var ushort event_type;
 	var ushort requester; 
 end
 
 pktype reply from radioMsg with
+	var ushort event_type;	
 	var ushort temperature;
 	var ushort requester;
 end
@@ -100,68 +110,101 @@ end
 var agent ag_msg;
 ag_msg.type = agent;
 ag_msg.target = neighbors_ids[0];
-ag_msg.event_type = eventMinID;
 ag_msg.n_jumps = 0;
 
 var query ex_query;
 ex_query.n_jumps = 0;
-ex_query.last_neighbor = 44;
 ex_query.event_type = eventMinID;
 ex_query.type = query;
 
 var reply sReply;
 sReply.type = reply;
 
-
-
 var ushort times_received = 0;
 
-var ushort originalRequester = 0;
-var ushort neighborToReplyTo = 0;
+var ushort originalRequester = 0; //esse aqui é duplo também?
+var ushort[2] neighborToReplyTo;
+neighborToReplyTo[0] = 0;
+neighborToReplyTo[1] = 0;
 
-var ushort hopsToEventMin = 1000;
-var byte originatedEventMin = 0;
-var byte originatedEventMax = 0;
-var byte hasEventMin = 0;
-var byte hasEventMax = 0;
+var ushort[2] hopsToEvent;
+hopsToEvent[0] = 1000;
+hopsToEvent[1] = 1000;
+var byte[2] originatedEvent;
+originatedEvent[0] = 0;
+originatedEvent[1] = 0;
+var byte[2] hasEvent;
+hasEvent[0] = 0;
+hasEvent[1] = 0;
 
+
+//hardcoded events:
+/*
 if nodeId == 11 then
-	//send agent
-	originatedEventMin = 1;
-	hasEventMin = 1;
-	emit LED0(ON);
-	eventMin_hops = 0;
-	eventMin_neighbor = 0;
+	//send agent, max
+	originatedEvent[1] = 1;
+	hasEvent[1] = 1;
+	emit LED1(ON);
+	event_hops[1] = 0;
+	event_neighbor[1] = 0;
 	ag_msg.target = 12;
 	ag_msg.n_jumps = 0;
 	ag_msg.last_neighbor = 11;
+	ag_msg.event_type = eventMaxID;
+	emit SEND(ag_msg);
+end
+
+if nodeId == 41 then
+	//send agent, min
+	originatedEvent[0] = 1;
+	hasEvent[0] = 1;
+	emit LED0(ON);
+	event_hops[0] = 0;
+	event_neighbor[0] = 0;
+	ag_msg.target = 31;
+	ag_msg.n_jumps = 0;
+	ag_msg.last_neighbor = 41;
+	ag_msg.event_type = eventMinID;
 	emit SEND(ag_msg);
 end
 
 if nodeId == 44 then
-	await 3s;	
+	await 3s;
 	//send query
-	emit LED0(ON);
-	emit LED1(ON);
 	emit LED2(ON);
 	ex_query.target = 34;
-	ex_query.event_type = eventMinID;
+	ex_query.event_type = eventMaxID;
 	ex_query.requester = 44;
+	ex_query.last_neighbor = 44;
 	emit SEND(ex_query);
 	await SEND_DONE;
 end
+
+if nodeId == 14 then
+	await 12s;
+	//send query
+	emit LED2(ON);
+	ex_query.target = 24;
+	ex_query.event_type = eventMinID;
+	ex_query.requester = 14;
+	ex_query.last_neighbor = 14;
+	emit SEND(ex_query);
+	await SEND_DONE;
+end
+*/
+
+
 
 var agent rec_ag;
 var query rec_query;
 var reply rec_reply;
 
-var byte hasReceivedAgent = 0;
-
-
-
 //LED 0 -> tem evento min
 //LED 1 -> tem evento max
-//LED 2 -> está fazendo query
+//LED 2 -> está fazendo query, ou uma query está passando por aqui
+
+var ushort upperLimit = 600;
+var ushort lowerLimit = 400;
 
 qClear();
 
@@ -169,24 +212,29 @@ par do
 	loop do //receber um AGENTE:
 		rec_ag = await RECEIVE;
 		if rec_ag.type == agent then
-			if rec_ag.event_type == eventMinID then
-				if rec_ag.n_jumps + 1 < eventMin_hops then
-					eventMin_hops = rec_ag.n_jumps + 1;
-					eventMin_neighbor = rec_ag.last_neighbor;
-				end
-				hasEventMin = 1;		
-				emit LED0(ON);
-			else/if rec_ag.event_type == eventMaxID then
-				emit LED1(ON);
-				//to do: max
+			
+			//atualiza melhor caminho, se o agente chegando aqui foi melhor do que o que já conhecia
+			var ushort id = rec_ag.event_type;
+			if rec_ag.n_jumps + 1 < event_hops[id] then
+				event_hops[id] = rec_ag.n_jumps + 1;
+				event_neighbor[id] = rec_ag.last_neighbor;
 			end
 
+			//eu recebi um agente. Registro esse recebimento e acendo um LED de acordo
+			hasEvent[id] = 1;		
+			if id == eventMinID then	
+				emit LED0(ON);
+			else
+				emit LED1(ON);
+			end
+
+			//repasso o agente a outro vizinho, se o num de pulo nao tiver estourado
 			if rec_ag.n_jumps < max_jumps then
 				//repassa o agente a outro vizinho
 				
 				//escolhe vizinho aleatório, mas não pode ser o mesmo que me enviou o agente
 				var ushort neighbor_index;
-				var ushort temp = 0;		
+				var ushort temp = 0;
 				
 				//sorteia vizinho
 				loop i,1000 do
@@ -207,45 +255,43 @@ with
 	loop do //receber uma QUERY
 		rec_query = await RECEIVE;
 		if rec_query.type == query then
-			if rec_query.event_type == eventMinID and hasEventMin == 1 then
+			var ushort id = rec_query.event_type;
+			if hasEvent[id] == 1 then //se tenho um evento deste tipo,
 				
-				if eventMin_hops == 0 then
-					//estou no nó que originou o evento
-					//devo mandar reply, por ora só acendo leds
-					emit LED0(ON);
-					emit LED1(ON);
-					emit LED2(ON);
+				if event_hops[id] == 0 then	
+					//estou no nó que originou o evento!
+
 					//mandar reply
 					emit REQ_TEMP;
 					sReply.temperature = await TEMP;
 					sReply.requester = rec_query.requester;
-					sReply.target = rec_query.last_neighbor;					
+					sReply.target = rec_query.last_neighbor;
+					sReply.event_type = rec_query.event_type;					
 					qPut(sReply);
 					
-				else
+				else	
 					//esse nó registrou o caminho para o evento buscado!
 
 					//seto o caminho de volta
-					if originalRequester != rec_query.requester then //só posso setar o caminho de volta se a query que eu to recebendo não está loopando em mim, senão eu perdeira o caminho até o requester
-						neighborToReplyTo = rec_query.last_neighbor;
-					end	
+					if originalRequester != rec_query.requester then //só posso setar o caminho de volta se a query que eu to recebendo não está loopando em mim, senão eu perderia o caminho até o requester
+						neighborToReplyTo[id] = rec_query.last_neighbor;
+						//emit LED2(ON);
+					end
 
 					//encaminho pelo caminho que conheço:
 					rec_query.n_jumps = rec_query.n_jumps + 0; //como já conheço o caminho, não incremento mais os pulos, pq não preciso matar a query caso não ache nada
 					rec_query.last_neighbor = nodeId;
-					rec_query.target = eventMin_neighbor;
+					rec_query.target = event_neighbor[id];
 					qPut(rec_query); //bota na fila do rádio	
 							
 				end
-				
-
-				
 
 			else/if rec_query.n_jumps < maxJumpsQuery then
 				//encaminho a query pra outro nó aleatório
 
 				//seto caminho de volta				
-				neighborToReplyTo = rec_query.last_neighbor;
+				neighborToReplyTo[id] = rec_query.last_neighbor;
+				//emit LED2(ON);
 
 				//escolhe vizinho aleatório, mas não pode ser o mesmo que me enviou o agente
 				
@@ -274,27 +320,71 @@ with
 	loop do //receber e repassar replies
 		rec_reply = await RECEIVE;
 		if rec_reply.type == reply then
-			emit LED0(OFF);
-			emit LED1(ON);
-			emit LED2(OFF);
+			//emit LED2(OFF);
 
 			if rec_reply.requester == nodeId then //reply chegou ao nó que fez a request
-				emit LED0(ON);
-				emit LED1(OFF);
 				emit LED2(OFF);
 			else
 				//continua encaminhando
-				await 1s;
-				rec_reply.target = 	neighborToReplyTo;
+				//await 1s;
+				var ushort id = rec_reply.event_type;
+				rec_reply.target = 	neighborToReplyTo[id];
 				qPut(rec_reply);
 			end
+		end
+	end
 
-			
-			
+with
+	loop do
+		//checa temperaturas e luminosidade, para disparar agentes ou queries
+	
+		emit REQ_TEMP;
+		var ushort temperature = await TEMP;
+		if temperature > upperLimit or temperature < lowerLimit then
+			var byte id;
+			if temperature > upperLimit then 
+				id = eventMaxID;
+				emit LED1(ON);
+			else
+				id = eventMinID;
+				emit LED0(ON);
+			end
 
+			//send agent, max
+			originatedEvent[id] = 1;
+			hasEvent[id] = 1;
+			event_hops[id] = 0;
+			event_neighbor[id] = 0;
+			//sorteia vizinho
+			ag_msg.target = neighbors_ids[random()%qtd_neighbors];
+			ag_msg.n_jumps = 0;
+			ag_msg.last_neighbor = nodeId;
+			ag_msg.event_type = id;
+			qPut(ag_msg);
 		end
 
+		emit REQ_PHOTO;
+		var ushort lum = await PHOTO;
+		if lum > upperLimit or lum < lowerLimit then
+			var byte id;
+			if lum > upperLimit then 
+				id = eventMaxID;
+			else
+				id = eventMinID;
+			end
+			emit LED2(ON);
+		
+			//send query
+			ex_query.target = neighbors_ids[random()%qtd_neighbors];
+			ex_query.event_type = id;
+			ex_query.requester = nodeId;
+			ex_query.last_neighbor = nodeId;
+			qPut(ex_query);
+		end
+			
+	
 
+		await 5s;
 	end
 
 
@@ -314,6 +404,8 @@ with
 			ack = await SEND_DONE_ACK;
 			if ack == TRUE then break; end // se mensagem foi enviada com sucesso, ok, saio do loop
 		end
+	var ushort delay = random() % 1000;
+	await (delay)ms;
 	end
 
 

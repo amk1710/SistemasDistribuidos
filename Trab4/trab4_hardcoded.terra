@@ -281,8 +281,10 @@ with
 				//encaminho a query pra outro nó aleatório
 
 				//seto caminho de volta				
-				neighborToReplyTo[id] = rec_query.last_neighbor;
-				//emit LED2(ON);
+				if originalRequester != rec_query.requester then //só posso setar o caminho de volta se a query que eu to recebendo não está loopando em mim, senão eu perderia o caminho até o requester
+					neighborToReplyTo[id] = rec_query.last_neighbor;
+					//emit LED2(ON);
+				end
 
 				//escolhe vizinho aleatório, mas não pode ser o mesmo que me enviou o agente
 				
